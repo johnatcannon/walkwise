@@ -23,6 +23,9 @@ class _LocationImagePageState extends State<LocationImagePage> {
   String? _descriptionAudioUrl;
   bool _isLoadingData = true;
   bool _continuePressed = false; // Guard to prevent duplicate continue presses
+  int _audioRetryCount = 0;
+  int _imageRetryKey = 0; // Key to force image rebuild on retry
+  static const int _maxAudioRetries = 2;
 
   @override
   void initState() {
@@ -82,7 +85,18 @@ class _LocationImagePageState extends State<LocationImagePage> {
       print('[LocationImage] Error loading location data: $e');
       setState(() {
         _isLoadingData = false;
+        _audioFinished = true; // Allow Continue when Firestore query fails
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to load location data. You can continue the tour.'),
+          duration: const Duration(seconds: 3),
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: () => _loadLocationData(),
+          ),
+        ),
+      );
     }
   }
 
@@ -100,7 +114,9 @@ class _LocationImagePageState extends State<LocationImagePage> {
         _audioError = false;
       });
       
-      await _audioPlayer!.play(UrlSource(_descriptionAudioUrl!));
+      // Add timeout for slow networks (30 seconds)
+      await _audioPlayer!.play(UrlSource(_descriptionAudioUrl!))
+          .timeout(const Duration(seconds: 30));
       
       // Listen for audio completion
       _audioPlayer!.onPlayerComplete.listen((_) {
@@ -108,6 +124,8 @@ class _LocationImagePageState extends State<LocationImagePage> {
           setState(() {
             _isAudioPlaying = false;
             _audioFinished = true;
+            _audioError = false;
+            _audioRetryCount = 0;
           });
         }
       });
@@ -121,8 +139,17 @@ class _LocationImagePageState extends State<LocationImagePage> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Audio unavailable. You can continue the tour. ($e)'),
+            content: const Text('Audio unavailable. You can continue the tour.'),
             duration: const Duration(seconds: 3),
+            action: _audioRetryCount < _maxAudioRetries
+                ? SnackBarAction(
+                    label: 'Retry',
+                    onPressed: () {
+                      _audioRetryCount++;
+                      _playLocationDescription();
+                    },
+                  )
+                : null,
           ),
         );
       }
@@ -130,13 +157,17 @@ class _LocationImagePageState extends State<LocationImagePage> {
   }
 
   Future<void> _replayAudio() async {
-    if (_audioPlayer != null && _isAudioLoaded) {
+    if (_audioPlayer != null && _isAudioLoaded && !_audioError) {
       await _audioPlayer!.play(UrlSource(_descriptionAudioUrl!));
       setState(() {
         _isAudioPlaying = true;
         _audioFinished = false;
         _audioError = false;
       });
+    } else if (_audioError) {
+      // Retry from scratch if previous attempt failed
+      _audioRetryCount++;
+      _playLocationDescription();
     }
   }
 
@@ -278,17 +309,29 @@ class _LocationImagePageState extends State<LocationImagePage> {
                                   
                                   const SizedBox(height: 12),
                                   
-                                  // Play / Replay button
-                                  TextButton.icon(
-                                    onPressed: _isAudioPlaying ? null : _playLocationDescription,
-                                    icon: Icon(_audioFinished ? Icons.replay : Icons.play_arrow),
-                                    label: Text(_audioFinished ? 'Replay Description' : 'Play Description'),
-                                  ),
-                                  
-                                  if (_audioError) ...[
+                                  // Play / Replay / Retry button
+                                  if (!_audioError) ...[
+                                    TextButton.icon(
+                                      onPressed: _isAudioPlaying ? null : _playLocationDescription,
+                                      icon: Icon(_audioFinished ? Icons.replay : Icons.play_arrow),
+                                      label: Text(_audioFinished ? 'Replay Description' : 'Play Description'),
+                                    ),
+                                  ] else ...[
+                                    TextButton.icon(
+                                      onPressed: _audioRetryCount < _maxAudioRetries
+                                          ? () {
+                                              _audioRetryCount++;
+                                              _playLocationDescription();
+                                            }
+                                          : null,
+                                      icon: const Icon(Icons.refresh),
+                                      label: Text(_audioRetryCount < _maxAudioRetries
+                                          ? 'Retry Audio'
+                                          : 'Audio unavailable'),
+                                    ),
                                     const SizedBox(height: 8),
                                     Text(
-                                      'Audio unavailable (offline). You can continue.',
+                                      'Audio unavailable. You can continue.',
                                       style: TextStyle(color: Colors.red[700], fontSize: 13),
                                       textAlign: TextAlign.center,
                                     ),
@@ -335,7 +378,13 @@ class _LocationImagePageState extends State<LocationImagePage> {
                                 fontFamily: 'TimeBurner',
                               ),
                             ),
-                            child: Text(_audioFinished ? 'Continue Tour' : 'Listen to continue...'),
+                            child: Text(
+                              _audioFinished
+                                  ? 'Continue Tour'
+                                  : (_audioError
+                                      ? 'Continue Anyway'
+                                      : 'Listen to continue...'),
+                            ),
                           ),
                         ),
                         
@@ -358,13 +407,49 @@ class _LocationImagePageState extends State<LocationImagePage> {
           children: [
             Image.network(
               _locationImageUrl!,
+              key: ValueKey(_imageRetryKey),
               fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
                 return Center(
-                  child: Icon(
-                    Icons.image_not_supported,
-                    size: 64,
-                    color: Colors.grey[400],
+                  child: CircularProgressIndicator(
+                    value: loadingProgress.expectedTotalBytes != null
+                        ? loadingProgress.cumulativeBytesLoaded /
+                            loadingProgress.expectedTotalBytes!
+                        : null,
+                  ),
+                );
+              },
+              errorBuilder: (context, error, stackTrace) {
+                print('[LocationImage] ❌ Image load error: $error');
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.image_not_supported,
+                        size: 64,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Image unavailable',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _imageRetryKey++;
+                          });
+                        },
+                        icon: const Icon(Icons.refresh, size: 18),
+                        label: const Text('Retry'),
+                      ),
+                    ],
                   ),
                 );
               },

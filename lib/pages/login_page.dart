@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:walkwise/services/onboarding_coordinator.dart';
 
 class LoginPage extends StatefulWidget {
@@ -209,16 +210,23 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       const SizedBox(height: 8),
                       TextButton(
-                        onPressed: () {
-                          // TODO: Launch GoWalkWise.com account creation
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Account creation will be available at GoWalkWise.com'),
-                            ),
-                          );
+                        onPressed: () async {
+                          // Open GamesAfoot.co account creation in browser
+                          final url = Uri.parse('https://gamesafoot.co/create-account');
+                          if (await canLaunchUrl(url)) {
+                            await launchUrl(url, mode: LaunchMode.externalApplication);
+                          } else {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Could not open account creation page'),
+                                ),
+                              );
+                            }
+                          }
                         },
                         child: const Text(
-                          'Create Account at GoWalkWise.com',
+                          'Create Account',
                           style: TextStyle(
                             fontFamily: 'TimeBurner',
                             fontWeight: FontWeight.bold,

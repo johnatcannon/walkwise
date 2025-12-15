@@ -159,7 +159,7 @@ class OnboardingDestination {
   factory OnboardingDestination.profileSetupRequired() {
     return OnboardingDestination._(
       OnboardingStep.profileSetup,
-      message: 'Please complete your profile on GoWalkWise.com',
+      message: 'Please complete your profile on GamesAfoot.co',
     );
   }
 
@@ -231,7 +231,7 @@ class OnboardingDestination {
       builder: (context) => AlertDialog(
         title: const Text('Complete Your Profile'),
         content: const Text(
-          'Please visit GoWalkWise.com to complete your profile setup.\n\n'
+          'Please visit GamesAfoot.co to complete your profile setup.\n\n'
           'You\'ll need to provide:\n'
           '• Your name\n'
           '• Your initials\n'

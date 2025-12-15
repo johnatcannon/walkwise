@@ -268,6 +268,7 @@ class _WalkingPageState extends State<WalkingPage> {
   Widget build(BuildContext context) {
     return Consumer<WalkWiseState>(
       builder: (context, state, child) {
+        final bool isAdmin = (state.userRole ?? '').toUpperCase() == 'ADMIN';
         return Scaffold(
           appBar: AppBar(
             title: const Text('Walking Tour'),
@@ -316,46 +317,22 @@ class _WalkingPageState extends State<WalkingPage> {
                     ),
                   ),
                 ),
-                // User Profile Section
+                // 1 - Route Map
                 ListTile(
-                  leading: Icon(Icons.person, color: Theme.of(context).colorScheme.primary),
-                  title: const Text('Profile'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openProfilePage(context);
-                  },
-                ),
-                ListTile(
-                  leading: Icon(Icons.settings, color: Theme.of(context).colorScheme.primary),
-                  title: const Text('Settings'),
+                  leading: Icon(Icons.map, color: Colors.orange[600]),
+                  title: const Text('Route Map'),
+                  subtitle: const Text('View current tour route'),
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const SettingsPage(),
+                        builder: (context) => const RouteMapPage(),
                       ),
                     );
                   },
                 ),
-                ListTile(
-                  leading: Icon(Icons.help_outline, color: Theme.of(context).colorScheme.primary),
-                  title: const Text('Help'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openHelpPage(context);
-                  },
-                ),
-                ListTile(
-                  leading: Icon(Icons.support_agent, color: Theme.of(context).colorScheme.primary),
-                  title: const Text('Support'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openSupportPage(context);
-                  },
-                ),
-                const Divider(),
-                // Active Tour Status
+                // 2 - Resume Tour, 3 - Abandon Tour (only when a tour is active)
                 if (state.currentVenue != null) ...[
                   ListTile(
                     leading: Icon(Icons.tour, color: Theme.of(context).colorScheme.secondary),
@@ -378,37 +355,67 @@ class _WalkingPageState extends State<WalkingPage> {
                   ),
                 ],
                 const Divider(),
-                // Developer Tools (for debugging)
+                // 4 - Profile
                 ListTile(
-                  leading: Icon(Icons.build, color: Colors.grey[600]),
-                  title: const Text('Debug'),
-                  subtitle: const Text('Diagnostics & logs'),
+                  leading: Icon(Icons.person, color: Theme.of(context).colorScheme.primary),
+                  title: const Text('Profile'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openProfilePage(context);
+                  },
+                ),
+                // 5 - Settings
+                ListTile(
+                  leading: Icon(Icons.settings, color: Theme.of(context).colorScheme.primary),
+                  title: const Text('Settings'),
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const DebugPage(),
+                        builder: (context) => const SettingsPage(),
                       ),
                     );
                   },
                 ),
+                // 6 - Help
                 ListTile(
-                  leading: Icon(Icons.map, color: Colors.orange[600]),
-                  title: const Text('Route Map'),
-                  subtitle: const Text('View current tour route'),
+                  leading: Icon(Icons.help_outline, color: Theme.of(context).colorScheme.primary),
+                  title: const Text('Help'),
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const RouteMapPage(),
-                      ),
-                    );
+                    _openHelpPage(context);
+                  },
+                ),
+                // 7 - Support
+                ListTile(
+                  leading: Icon(Icons.support_agent, color: Theme.of(context).colorScheme.primary),
+                  title: const Text('Support'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openSupportPage(context);
                   },
                 ),
                 const Divider(),
-                // Account Actions
+                // Debug menu - only for ADMIN users
+                if (isAdmin) ...[
+                  ListTile(
+                    leading: Icon(Icons.build, color: Colors.grey[600]),
+                    title: const Text('Debug'),
+                    subtitle: const Text('Diagnostics & logs'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const DebugPage(),
+                        ),
+                      );
+                    },
+                  ),
+                  const Divider(),
+                ],
+                // 8 - Logout (Account Actions)
                 ListTile(
                   leading: Icon(Icons.logout, color: Theme.of(context).colorScheme.primary),
                   title: const Text('Logout'),

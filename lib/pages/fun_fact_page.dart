@@ -15,7 +15,11 @@ class _FunFactPageState extends State<FunFactPage> {
   late AudioPlayer _audioPlayer;
   bool _isPlaying = false;
   bool _audioFinished = false;
+  bool _audioError = false;
   bool _continuePressed = false; // Guard to prevent duplicate continue presses
+  int _audioRetryCount = 0;
+  int _imageRetryKey = 0; // Key to force image rebuild on retry
+  static const int _maxAudioRetries = 2;
 
   @override
   void initState() {
@@ -35,10 +39,13 @@ class _FunFactPageState extends State<FunFactPage> {
     setState(() {
       _isPlaying = true;
       _audioFinished = false;
+      _audioError = false;
     });
     
     try {
-      await _audioPlayer.play(UrlSource(widget.funFact.audioUrl));
+      // Add timeout for slow networks (30 seconds)
+      await _audioPlayer.play(UrlSource(widget.funFact.audioUrl))
+          .timeout(const Duration(seconds: 30));
       print('[FunFactPage] 🔊 Audio started: ${widget.funFact.audioUrl}');
       _audioPlayer.onPlayerComplete.listen((event) {
         print('[FunFactPage] ✅ Audio playback completed');
@@ -46,6 +53,8 @@ class _FunFactPageState extends State<FunFactPage> {
           setState(() {
             _isPlaying = false;
             _audioFinished = true;
+            _audioError = false;
+            _audioRetryCount = 0;
           });
         }
       });
@@ -54,8 +63,25 @@ class _FunFactPageState extends State<FunFactPage> {
       if (mounted) {
         setState(() {
           _isPlaying = false;
-          _audioFinished = false;
+          _audioError = true;
+          // Allow continue even if audio fails (like location page)
+          _audioFinished = true;
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Audio unavailable. You can continue the tour.'),
+            duration: const Duration(seconds: 3),
+            action: _audioRetryCount < _maxAudioRetries
+                ? SnackBarAction(
+                    label: 'Retry',
+                    onPressed: () {
+                      _audioRetryCount++;
+                      _playAudio();
+                    },
+                  )
+                : null,
+          ),
+        );
       }
     }
   }
@@ -168,13 +194,49 @@ class _FunFactPageState extends State<FunFactPage> {
                                   children: [
                                     Image.network(
                                       widget.funFact.imageUrl,
+                                      key: ValueKey(_imageRetryKey),
                                       fit: BoxFit.cover,
-                                      errorBuilder: (context, error, stackTrace) {
+                                      loadingBuilder: (context, child, loadingProgress) {
+                                        if (loadingProgress == null) return child;
                                         return Center(
-                                          child: Icon(
-                                            Icons.image_not_supported,
-                                            size: 64,
-                                            color: Colors.grey[400],
+                                          child: CircularProgressIndicator(
+                                            value: loadingProgress.expectedTotalBytes != null
+                                                ? loadingProgress.cumulativeBytesLoaded /
+                                                    loadingProgress.expectedTotalBytes!
+                                                : null,
+                                          ),
+                                        );
+                                      },
+                                      errorBuilder: (context, error, stackTrace) {
+                                        print('[FunFactPage] ❌ Image load error: $error');
+                                        return Center(
+                                          child: Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Icon(
+                                                Icons.image_not_supported,
+                                                size: 64,
+                                                color: Colors.grey[400],
+                                              ),
+                                              const SizedBox(height: 8),
+                                              Text(
+                                                'Image unavailable',
+                                                style: TextStyle(
+                                                  color: Colors.grey[600],
+                                                  fontSize: 14,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 8),
+                                              TextButton.icon(
+                                                onPressed: () {
+                                                  setState(() {
+                                                    _imageRetryKey++;
+                                                  });
+                                                },
+                                                icon: const Icon(Icons.refresh, size: 18),
+                                                label: const Text('Retry'),
+                                              ),
+                                            ],
                                           ),
                                         );
                                       },
@@ -254,13 +316,28 @@ class _FunFactPageState extends State<FunFactPage> {
                           
                           const SizedBox(height: 16),
                           
-                          // Replay Audio Button (if audio finished)
+                          // Audio controls
                           if (_audioFinished) ...[
-                            TextButton.icon(
-                              onPressed: _playAudio,
-                              icon: const Icon(Icons.replay),
-                              label: const Text('Replay Audio'),
-                            ),
+                            if (!_audioError) ...[
+                              TextButton.icon(
+                                onPressed: _playAudio,
+                                icon: const Icon(Icons.replay),
+                                label: const Text('Replay Audio'),
+                              ),
+                            ] else ...[
+                              TextButton.icon(
+                                onPressed: _audioRetryCount < _maxAudioRetries
+                                    ? () {
+                                        _audioRetryCount++;
+                                        _playAudio();
+                                      }
+                                    : null,
+                                icon: const Icon(Icons.refresh),
+                                label: Text(_audioRetryCount < _maxAudioRetries
+                                    ? 'Retry Audio'
+                                    : 'Audio unavailable'),
+                              ),
+                            ],
                           ],
                         ],
                       ),
@@ -305,7 +382,13 @@ class _FunFactPageState extends State<FunFactPage> {
                           fontFamily: 'TimeBurner',
                         ),
                       ),
-                      child: Text(_audioFinished ? 'Continue Walking' : 'Listen to continue...'),
+                      child: Text(
+                        _audioFinished
+                            ? 'Continue Walking'
+                            : (_audioError
+                                ? 'Continue Anyway'
+                                : 'Listen to continue...'),
+                      ),
                     ),
                   ),
                   

@@ -35,6 +35,7 @@ class WalkWiseState extends ChangeNotifier {
   final int _lastSegmentIndex = 0;
   final int _stepsAtLastCheckpoint = 0;
   final List<String> _completedVenues = [];
+  String? _userRole; // e.g., ADMIN, PLAYER
   
   // Fun facts
   List<FunFact> _currentFunFacts = [];
@@ -92,6 +93,7 @@ class WalkWiseState extends ChangeNotifier {
     _funFactInterval = null;
     _calculatedStepsForSegment = null;
     _averageSteps = null;
+    _userRole = null;
     
     // Audio player
     _audioPlayer?.stop();
@@ -131,6 +133,7 @@ class WalkWiseState extends ChangeNotifier {
   int? get funFactInterval => _funFactInterval;
   int? get calculatedStepsForSegment => _calculatedStepsForSegment;
   double? get averageSteps => _averageSteps;
+  String? get userRole => _userRole;
   
   
   /// Select a venue and set up for walking
@@ -154,6 +157,8 @@ class WalkWiseState extends ChangeNotifier {
         final profileDoc = profileQuery.docs.first;
         final profileData = profileDoc.data();
         final existingHandicap = (profileData['handicap'] as num?)?.toDouble() ?? 1.0;
+        _userRole = profileData['user_role'] as String?;
+        print('[selectVenue] Loaded user_role from profile: $_userRole');
         
         // Attempt to recalculate handicap from device health data (matches Agatha)
         print('[selectVenue] Attempting to recalculate handicap from device health data...');
@@ -770,7 +775,11 @@ class WalkWiseState extends ChangeNotifier {
     // Reset milestone in progress flag now that user has pressed Continue
     _milestoneInProgress = false;
     
-    if (_currentSegmentIndex >= _currentRoute!.length - 1) {
+    // We just arrived at DESTINATION index = _currentSegmentIndex + 1.
+    // If that destination is the LAST entry in the route, the tour is complete.
+    final int lastIndex = _currentRoute!.length - 1;
+    final int justArrivedIndex = _currentSegmentIndex + 1;
+    if (justArrivedIndex >= lastIndex) {
       print('[AWTY] Tour complete!');
       // Clear saved state on tour completion
       await TourStateService.clearTourState();
