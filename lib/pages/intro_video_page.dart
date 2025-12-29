@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:video_player/video_player.dart';
 import 'package:walkwise/app_state.dart';
+import 'package:go_router/go_router.dart';
 
 class IntroVideoPage extends StatefulWidget {
   const IntroVideoPage({super.key});
@@ -96,7 +97,8 @@ class _IntroVideoPageState extends State<IntroVideoPage> {
 
   void _startTour() {
     _videoController?.pause();
-    Navigator.pushNamed(context, '/walking');
+    if (!mounted) return;
+    context.go('/walking');
   }
 
   @override

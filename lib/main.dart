@@ -1,17 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
-import 'package:walkwise/pages/splash_page.dart';
-import 'package:walkwise/pages/venue_selection_page.dart';
-import 'package:walkwise/pages/walking_page.dart';
-import 'package:walkwise/pages/intro_video_page.dart';
-import 'package:walkwise/pages/location_image_page.dart';
-import 'package:walkwise/pages/tour_completion_page.dart';
+import 'package:go_router/go_router.dart';
 import 'package:walkwise/app_state.dart';
 import 'package:walkwise/services/awty_service.dart';
 import 'package:walkwise/app/theme.dart';
-import 'package:games_afoot_framework/services/awty_notification_service.dart';
+import 'package:games_afoot_framework/games_afoot_framework.dart';
 import 'firebase_options.dart';
+import 'app/walkwise_app_config.dart';
+import 'app/walkwise_app_routes.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,11 +31,19 @@ class WalkWiseApp extends StatefulWidget {
 
 class _WalkWiseAppState extends State<WalkWiseApp> with WidgetsBindingObserver {
   WalkWiseState? _walkWiseState;
+  late final AppConfig _config;
+  late final GoRouter _router;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
+    _config = WalkWiseAppConfig.build();
+    _router = FrameworkRouter.createRouter(
+      config: _config,
+      appRoutes: WalkWiseAppRoutes.routes(),
+    );
   }
 
   @override
@@ -68,33 +73,15 @@ class _WalkWiseAppState extends State<WalkWiseApp> with WidgetsBindingObserver {
         _walkWiseState = WalkWiseState();
         return _walkWiseState!;
       },
-      child: Builder(
-        builder: (context) {
-          // Initialize notification service when we have a context
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            AwtyNotificationService.initialize(
-              context,
-              () {
-                // Notification tapped callback - could navigate to walking page
-                // For now, just log it
-                print('[WalkWise] Notification tapped - user can open app to see milestone');
-              },
-            );
-          });
-          
-          return MaterialApp(
-            title: 'WalkWise',
-            theme: WalkWiseTheme.lightTheme,
-            home: const SplashPage(),
-            routes: {
-              '/venue-selection': (context) => const VenueSelectionPage(),
-              '/walking': (context) => const WalkingPage(),
-              '/intro-video': (context) => const IntroVideoPage(),
-              '/location-image': (context) => const LocationImagePage(locationName: ''),
-              '/completion-video': (context) => const TourCompletionPage(venueName: ''),
-            },
-          );
-        },
+      child: MaterialApp.router(
+        title: _config.appName,
+        theme: WalkWiseTheme.lightTheme.copyWith(
+          colorScheme: WalkWiseTheme.lightTheme.colorScheme.copyWith(
+            primary: _config.primaryColor,
+          ),
+        ),
+        routerConfig: _router,
+        debugShowCheckedModeBanner: false,
       ),
     );
   }

@@ -11,12 +11,19 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     
+    <!-- Firebase Analytics / Advertising ID permission -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
+    
     <!-- Query declarations for Android 11+ -->
     <queries>
         <!-- Health Connect -->
         <package android:name="com.google.android.apps.healthdata" />
         <intent>
             <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+        </intent>
+        <!-- Required for Health Connect permission dialog to appear -->
+        <intent>
+            <action android:name="androidx.health.ACTION_REQUEST_PERMISSIONS" />
         </intent>
         
         <!-- URL Launcher - Allow opening web URLs -->
@@ -30,7 +37,7 @@
         </intent>
     </queries>
     <application
-        android:label="walkwise"
+        android:label="WalkWise"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon">
         <activity
@@ -59,6 +66,19 @@
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
             </intent-filter>
         </activity>
+        
+        <!-- Health Connect activity-alias (REQUIRED) -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE"/>
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS"/>
+            </intent-filter>
+        </activity-alias>
+        
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

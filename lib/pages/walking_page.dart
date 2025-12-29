@@ -4,18 +4,16 @@ import 'package:walkwise/app_state.dart';
 import 'package:walkwise/pages/fun_fact_page.dart';
 import 'package:walkwise/pages/location_image_page.dart';
 import 'package:walkwise/pages/tour_completion_page.dart';
-import 'package:walkwise/pages/settings_page.dart';
-import 'package:walkwise/pages/login_page.dart';
-import 'package:walkwise/pages/profile_webview_page.dart';
 import 'package:walkwise/pages/venue_selection_page.dart';
 import 'package:walkwise/pages/debug_page.dart';
 import 'package:walkwise/pages/route_map_page.dart';
+import 'package:walkwise/app/walkwise_app_config.dart';
 import 'package:awty_engine/awty_engine.dart';
 import 'package:vibration/vibration.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:games_afoot_framework/services/awty_notification_service.dart';
+import 'package:games_afoot_framework/games_afoot_framework.dart';
+import 'package:go_router/go_router.dart';
 
 class WalkingPage extends StatefulWidget {
   const WalkingPage({super.key});
@@ -36,6 +34,23 @@ class _WalkingPageState extends State<WalkingPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final state = context.read<WalkWiseState>();
+      
+      // Check if we need to restore tour state (e.g., when navigating back from Ready to Play)
+      if (state.currentVenue == null || state.currentRoute == null) {
+        print('[WalkingPage] No active tour state, checking for saved state...');
+        final restored = await state.restoreTourState();
+        if (restored && state.isWalking) {
+          print('[WalkingPage] Tour state restored, resuming walking...');
+          await state.resumeWalkingFromState();
+        } else {
+          // No tour state available - redirect to venue selection
+          print('[WalkingPage] No tour state available, redirecting to venue selection...');
+          if (mounted) {
+            context.go('/venue-selection');
+            return; // Exit early to prevent further initialization
+          }
+        }
+      }
       
       // Update notification service context
       AwtyNotificationService.updateContext(context);
@@ -160,40 +175,14 @@ class _WalkingPageState extends State<WalkingPage> {
     super.dispose();
   }
 
-  void _openProfilePage(BuildContext context) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      // Open unified profile form in WebView for viewing/editing
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const ProfileWebViewPage(),
-        ),
-      );
-    }
-  }
-
-  void _openHelpPage(BuildContext context) async {
-    final url = Uri.parse('https://gowalkwise.com/help/');
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-    }
-  }
-
-  void _openSupportPage(BuildContext context) async {
-    final url = Uri.parse('https://gowalkwise.com/support/');
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-    }
-  }
-
-  void _handleLogout(BuildContext context, WalkWiseState state) async {
+  /// Handle logout with confirmation and AWTY cleanup
+  Future<void> _handleLogoutWithCleanup(BuildContext context, WalkWiseState state) async {
     // Show confirmation dialog
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
+        content: const Text('Are you sure you want to logout? This will stop your current tour.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -201,6 +190,9 @@ class _WalkingPageState extends State<WalkingPage> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange[700],
+            ),
             child: const Text('Logout'),
           ),
         ],
@@ -208,8 +200,6 @@ class _WalkingPageState extends State<WalkingPage> {
     );
 
     if (confirmed == true && context.mounted) {
-      Navigator.pop(context); // Close drawer
-      
       // Stop any active AWTY tracking
       await state.stopAWTY();
       
@@ -218,10 +208,7 @@ class _WalkingPageState extends State<WalkingPage> {
       
       // Navigate to login page
       if (context.mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const LoginPage()),
-          (route) => false,
-        );
+        context.go('/login');
       }
     }
   }
@@ -269,160 +256,87 @@ class _WalkingPageState extends State<WalkingPage> {
     return Consumer<WalkWiseState>(
       builder: (context, state, child) {
         final bool isAdmin = (state.userRole ?? '').toUpperCase() == 'ADMIN';
+        final config = WalkWiseAppConfig.build();
+        
+        // Build app-specific menu items
+        final appMenuItems = <FrameworkMenuItem>[
+          // Route Map (tour-specific)
+          FrameworkMenuItem(
+            title: 'Route Map',
+            subtitle: 'View current tour route',
+            icon: Icons.map,
+            onTap: () {
+              Navigator.pop(context); // Close drawer
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const RouteMapPage(),
+                ),
+              );
+            },
+          ),
+          // Resume/Abandon tour (tour-specific)
+          if (state.currentVenue != null) ...[
+            FrameworkMenuItem(
+              title: 'Resume Tour',
+              subtitle: '${state.currentVenue}',
+              icon: Icons.tour,
+              onTap: () {
+                Navigator.pop(context); // Already on walking page
+              },
+            ),
+            FrameworkMenuItem(
+              title: 'Abandon Tour',
+              subtitle: 'Select a different venue',
+              icon: Icons.cancel,
+              onTap: () async {
+                Navigator.pop(context);
+                await _abandonTour(context, state);
+              },
+            ),
+          ],
+          // Profile
+          FrameworkMenuItem(
+            title: 'Profile',
+            icon: Icons.person,
+            onTap: () {
+              Navigator.pop(context);
+              context.go('/profile-setup');
+            },
+          ),
+          // Debug menu (admin only)
+          if (isAdmin)
+            FrameworkMenuItem(
+              title: 'Debug',
+              subtitle: 'Diagnostics & logs',
+              icon: Icons.build,
+              isBetaOnly: true,
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const DebugPage(),
+                  ),
+                );
+              },
+            ),
+        ];
+        
         return Scaffold(
           appBar: AppBar(
             title: const Text('Walking Tour'),
             backgroundColor: Theme.of(context).colorScheme.inversePrimary,
           ),
-          drawer: Drawer(
-            child: ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                DrawerHeader(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  margin: EdgeInsets.zero,
-                  padding: EdgeInsets.zero,
-                  child: Container(
-                    height: 120, // Fixed height to prevent overflow
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Image.asset(
-                          'assets/images/WalkWise-Green-logo.png',
-                          width: 40, // Reduced size
-                          height: 40,
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'WalkWise',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                            fontFamily: 'TimeBurner',
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const Text(
-                          'Virtual Walking Tours',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                            fontFamily: 'TimeBurner',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                // 1 - Route Map
-                ListTile(
-                  leading: Icon(Icons.map, color: Colors.orange[600]),
-                  title: const Text('Route Map'),
-                  subtitle: const Text('View current tour route'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const RouteMapPage(),
-                      ),
-                    );
-                  },
-                ),
-                // 2 - Resume Tour, 3 - Abandon Tour (only when a tour is active)
-                if (state.currentVenue != null) ...[
-                  ListTile(
-                    leading: Icon(Icons.tour, color: Theme.of(context).colorScheme.secondary),
-                    title: const Text('Resume Tour'),
-                    subtitle: Text('${state.currentVenue}${state.isWalking ? ' - Walking to ${state.currentRoute?[state.currentSegmentIndex]}' : ''}'),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () {
-                      Navigator.pop(context);
-                      // Already on walking page, just close drawer
-                    },
-                  ),
-                  ListTile(
-                    leading: Icon(Icons.cancel, color: Colors.orange[700]),
-                    title: const Text('Abandon Tour'),
-                    subtitle: const Text('Select a different venue'),
-                    onTap: () async {
-                      Navigator.pop(context);
-                      await _abandonTour(context, state);
-                    },
-                  ),
-                ],
-                const Divider(),
-                // 4 - Profile
-                ListTile(
-                  leading: Icon(Icons.person, color: Theme.of(context).colorScheme.primary),
-                  title: const Text('Profile'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openProfilePage(context);
-                  },
-                ),
-                // 5 - Settings
-                ListTile(
-                  leading: Icon(Icons.settings, color: Theme.of(context).colorScheme.primary),
-                  title: const Text('Settings'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const SettingsPage(),
-                      ),
-                    );
-                  },
-                ),
-                // 6 - Help
-                ListTile(
-                  leading: Icon(Icons.help_outline, color: Theme.of(context).colorScheme.primary),
-                  title: const Text('Help'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openHelpPage(context);
-                  },
-                ),
-                // 7 - Support
-                ListTile(
-                  leading: Icon(Icons.support_agent, color: Theme.of(context).colorScheme.primary),
-                  title: const Text('Support'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openSupportPage(context);
-                  },
-                ),
-                const Divider(),
-                // Debug menu - only for ADMIN users
-                if (isAdmin) ...[
-                  ListTile(
-                    leading: Icon(Icons.build, color: Colors.grey[600]),
-                    title: const Text('Debug'),
-                    subtitle: const Text('Diagnostics & logs'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const DebugPage(),
-                        ),
-                      );
-                    },
-                  ),
-                  const Divider(),
-                ],
-                // 8 - Logout (Account Actions)
-                ListTile(
-                  leading: Icon(Icons.logout, color: Theme.of(context).colorScheme.primary),
-                  title: const Text('Logout'),
-                  onTap: () => _handleLogout(context, state),
-                ),
-              ],
-            ),
+          drawer: FrameworkNavigationMenu(
+            config: config,
+            appMenuItems: appMenuItems,
+            isBetaTester: isAdmin,
+            onClose: () {
+              // Save tour state before closing drawer (in case user navigates away)
+              state.saveTourState();
+              Navigator.pop(context);
+            },
           ),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),

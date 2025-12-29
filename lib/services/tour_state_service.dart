@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:games_afoot_framework/services/state_persistence_service.dart';
 
 /// WalkWise tour state persistence service
 /// 
@@ -207,6 +208,13 @@ class TourStateService {
           'current_tour_venue': FieldValue.delete(),
           'tour_last_saved': FieldValue.delete(),
         });
+      }
+
+      // Keep framework state consistent (so onboarding doesn't think there's resumable state).
+      try {
+        await StatePersistenceService().clearState();
+      } catch (e) {
+        print('[TourState] ⚠️ Framework state clear failed: $e');
       }
 
       print('[TourState] ✓ Cleared tour state');

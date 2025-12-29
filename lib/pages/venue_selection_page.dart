@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:walkwise/app_state.dart';
+import 'package:go_router/go_router.dart';
 
 class VenueSelectionPage extends StatefulWidget {
   const VenueSelectionPage({super.key});
@@ -165,7 +166,7 @@ class _VenueSelectionPageState extends State<VenueSelectionPage> {
         Navigator.of(context).pop();
 
         // Navigate to intro video page
-        Navigator.pushNamed(context, '/intro-video');
+        context.go('/intro-video');
       }
     } catch (e) {
       // Check if widget is still mounted before using context

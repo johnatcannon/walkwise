@@ -14,6 +14,7 @@ import 'package:walkwise/services/walkwise_logger.dart';
 import 'package:games_afoot_health/health_average_service.dart';
 import 'package:walkwise/services/tour_state_service.dart';
 import 'package:games_afoot_framework/services/awty_notification_service.dart';
+import 'package:games_afoot_framework/services/state_persistence_service.dart';
 
 /// WalkWise App State - manages all app-wide data
 /// This replaces passing variables through multiple screens
@@ -893,6 +894,17 @@ class WalkWiseState extends ChangeNotifier {
 
     await TourStateService.saveTourState(state);
     print('[TourState] ✓ Tour state saved');
+
+    // Also save to Games Afoot framework state persistence so framework onboarding can resume correctly.
+    try {
+      await StatePersistenceService().saveState({
+        'type': 'walkwise_tour_state',
+        ...state,
+      });
+    } catch (e) {
+      // Don't fail the app if remote persistence fails; local TourStateService already succeeded.
+      print('[TourState] ⚠️ Framework state save failed: $e');
+    }
   }
 
   /// Restore tour state from saved data

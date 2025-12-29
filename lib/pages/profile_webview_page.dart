@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:walkwise/services/onboarding_coordinator.dart';
 
 class ProfileWebViewPage extends StatefulWidget {
   const ProfileWebViewPage({super.key});

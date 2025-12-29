@@ -1,0 +1,16 @@
+# WalkWise Release Keystore Properties
+# 
+# INSTRUCTIONS:
+# 1. Generate a keystore file:
+#    keytool -genkey -v -keystore walkwise-release-key.keystore -alias walkwise -keyalg RSA -keysize 2048 -validity 10000
+#
+# 2. Copy this file to key.properties (without .template)
+# 3. Fill in the actual values below
+# 4. Store passwords securely - you'll need them for every release
+# 5. NEVER commit key.properties or the keystore file to git!
+
+storePassword=WalkWise!Key1217
+keyPassword=WalkWise!Key1217
+keyAlias=walkwise
+storeFile=app/walkwise-release-key.keystore
+
